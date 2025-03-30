@@ -3,10 +3,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
-import pickle
+import coremltools
 
-# Load the dataset
+# Load the dataset (assumed to have only "Accuracy", "Score", and "Goal Score" columns)
 df = pd.read_csv("accuracy_scores_100_rows.csv")
+
+# (Optional) Clean the dataset: drop rows with missing values and reset the index.
 df.dropna(inplace=True)
 df.reset_index(drop=True, inplace=True)
 
@@ -17,35 +19,24 @@ y = df["Goal Score"]
 # Split data into training and testing sets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Create and fit the StandardScaler
+# Create and fit the StandardScaler on the training data
 scaler = StandardScaler()
-scaler.fit(X_train)
+X_train_scaled = scaler.fit_transform(X_train)
 
-# Train the Linear Regression model on scaled data
+# Train the Linear Regression model on scaled training data
 model = LinearRegression()
-model.fit(scaler.transform(X_train), y_train)
+model.fit(X_train_scaled, y_train)
 
-# Optional: Save the model separately
-with open('linear_regression_model.pkl', 'wb') as f:
-    pickle.dump(model, f)
+# Evaluate model performance using the R² score
+X_test_scaled = scaler.transform(X_test)
+score = model.score(X_test_scaled, y_test)
+print("Model R² Score:", score)
+
 # Create a pipeline that combines scaling and regression
 pipeline = Pipeline([
     ('scaler', scaler),
     ('regressor', model)
 ])
-
-
-# Test the pipeline on an example input
-example_input = {"Accuracy": 0.9, "Score": 0.8}
-# Note: If needed, convert the input to a DataFrame or array as expected by the pipeline.
-import numpy as np
-test_values = [[example_input["Accuracy"], example_input["Score"]]]
-prediction = pipeline.predict(test_values)
-print("Prediction:", prediction)
-
-
-
-import coremltools
 
 # Convert the pipeline into a Core ML model.
 coreml_model = coremltools.converters.sklearn.convert(
@@ -54,17 +45,7 @@ coreml_model = coremltools.converters.sklearn.convert(
     output_feature_names="Goal Score"
 )
 
-# Optionally, view a summary of the Core ML model.
+# Optionally, print the Core ML model summary and save it.
 print(coreml_model)
-
-
 coreml_model.save("LidarMLModel.mlmodel")
 
-
-# Load the Core ML model for testing
-loaded_model = coremltools.models.MLModel("LidarMLModel.mlmodel")
-
-# Make a prediction with the Core ML model
-example_input = {"Accuracy": 0.9, "Score": 0.8}
-coreml_prediction = loaded_model.predict(example_input)
-print("Core ML Prediction:", coreml_prediction)
